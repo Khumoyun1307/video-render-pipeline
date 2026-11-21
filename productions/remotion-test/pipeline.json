@@ -4,6 +4,7 @@
   "format": "landscape",
   "workers": 4,
   "sliceSeconds": 10,
+  "framecode": true,
   "entry": "src/index.ts",
   "projects": [
     { "id": "Title", "frames": 180 },

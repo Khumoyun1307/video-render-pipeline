@@ -12,7 +12,7 @@ def add_frame_code(scene):
     for i, sq in enumerate(bits):
         sq.move_to([left + (8 + 24 * i + 12) * px, top - 20 * px, 0])
 
-    def show(group):
+    def show(group, dt):  # dt makes it time-based, so Manim draws every frame of a wait instead of repeating one
         n = round(scene.renderer.time * config.frame_rate)
         for i, sq in enumerate(group):
             sq.set_fill(WHITE, opacity=1.0 if (n >> (15 - i)) & 1 else 0.0)
