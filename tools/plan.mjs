@@ -1,12 +1,14 @@
-// node tools/plan.mjs <production> [--only "ch03 ch07"] [--github]
+// node tools/plan.mjs <production> [--only "ch03 ch07"] [--github] [--engine <name>]
 // Prints the render jobs of a production as JSON. --only keeps the jobs of the named projects (a re-render).
 // With --github (used by the workflow) it also writes plan.json and hands the job list to the matrix.
+// --engine (used by each engine's workflow) refuses a production made for another engine.
 import fs from "node:fs";
 import { plan, parseArgs, die } from "./lib.mjs";
 
-const args = parseArgs(process.argv.slice(2), ["only"]);
+const args = parseArgs(process.argv.slice(2), ["only", "engine"]);
 if (!args._[0]) die("usage: node tools/plan.mjs <production> [--only \"ch03 ch07\"] [--github]");
 const p = plan(args._[0]);
+if (args.engine && args.engine !== p.engine) die(p.production + " is a " + p.engine + " production: render it with " + p.workflow + ", not the " + args.engine + " workflow");
 const only = String(args.only || "").split(/[\s,]+/).filter(Boolean);
 if (only.length) {
   const unknown = only.filter((o) => !p.parts.some((x) => x.project === o));
@@ -18,7 +20,7 @@ if (args.github) {
   fs.writeFileSync("plan.json", JSON.stringify(p, null, 2) + "\n");
   fs.appendFileSync(process.env.GITHUB_OUTPUT, "matrix=" + JSON.stringify({ include: p.parts }) + "\n");
   const secs = (f) => (f / p.fps).toFixed(1) + " s";
-  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, "### " + p.production + ": " + p.parts.length + " render job(s)\n\n| job | frames | length |\n|---|---|---|\n" +
-    p.parts.map((x) => "| " + x.id + " | " + x.frames + " | " + secs(x.frames) + " |").join("\n") + "\n");
+  fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, "### " + p.production + " (" + p.engine + " " + p.version + "): " + p.parts.length + " render job(s)\n\n| job | frames | length |\n|---|---|---|\n" +
+    p.parts.map((x) => "| " + x.id + " | " + (x.frames ?? "set by the scene") + " | " + (x.frames == null ? "" : secs(x.frames)) + " |").join("\n") + "\n");
 }
 console.log(JSON.stringify(p, null, 2));

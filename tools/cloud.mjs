@@ -1,8 +1,10 @@
-// The local half of the pipeline. Needs git, the GitHub CLI (gh, signed in), ffmpeg and ffprobe.
+// The local half of the pipeline, the same for every engine (HyperFrames, Remotion, Manim): the engine named in
+// pipeline.json picks the workflow on GitHub (render.yml, render-remotion.yml or render-manim.yml). Needs git, the GitHub CLI (gh, signed in), ffmpeg and ffprobe.
 //
 //   node tools/cloud.mjs render  <production> [--only "ch03 ch07"] [--skip-check] [--audio narration.wav] [--out final.mp4]
 //        start a run on GitHub, wait for it, download the parts, join them, add the narration
 //   node tools/cloud.mjs start   <production> [--only "..."] [--skip-check]      start only; prints the run id
+//        --skip-check applies to HyperFrames only (it skips "hyperframes check")
 //   node tools/cloud.mjs collect <production> [--run <id>] [--audio narration.wav] [--out final.mp4] [--keep-artifacts]
 //        wait for a run (default: the latest), download, join, add the narration
 //   node tools/cloud.mjs join    <production> [--audio narration.wav] [--out final.mp4]
@@ -20,7 +22,7 @@ const args = parseArgs(rest, ["only", "audio", "out", "run"]);
 const name = args._[0];
 if (!["render", "start", "collect", "join"].includes(cmd) || !name) die("usage: node tools/cloud.mjs render|start|collect|join <production> [options]   (see the top of tools/cloud.mjs)");
 const full = plan(name);                                     // also validates the production
-const WORKFLOW = "render.yml";
+const WORKFLOW = full.workflow;
 const outDir = path.join(REPO, "out", name), partsDir = path.join(outDir, "parts");
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const gh = (a, opts) => must("gh", a, opts);
@@ -35,8 +37,9 @@ function start() {
   const before = new Set(ghJson(["run", "list", "--workflow", WORKFLOW, "--limit", "20", "--json", "databaseId"]).map((r) => r.databaseId));
   const f = ["workflow", "run", WORKFLOW, "-f", "production=" + name];
   if (args.only) f.push("-f", "only=" + args.only);
-  if (args["skip-check"]) f.push("-f", "skip_check=true");
+  if (args["skip-check"] && full.engine === "hyperframes") f.push("-f", "skip_check=true");
   gh(f);
+  console.log("asked GitHub to render " + name + " with " + full.engine + " " + full.version + " (" + WORKFLOW + ")");
   for (let i = 0; i < 30; i++) {
     sleep(2000);
     const fresh = ghJson(["run", "list", "--workflow", WORKFLOW, "--limit", "20", "--json", "databaseId,headSha"]).find((r) => !before.has(r.databaseId) && r.headSha === head);
@@ -60,12 +63,13 @@ function collect(runId) {
   fs.rmSync(dl, { recursive: true, force: true });
   gh(["run", "download", runId, "--dir", dl]);
   const ran = JSON.parse(fs.readFileSync(path.join(dl, "plan", "plan.json"), "utf8"));
+  if (ran.engine && ran.engine !== full.engine) die("run " + runId + " used " + ran.engine + ", but " + name + " is now a " + full.engine + " production");
   if (ran.production !== name) die("run " + runId + " rendered \"" + ran.production + "\", not \"" + name + "\"");
   for (const p of ran.parts) {
     const src = path.join(dl, "part-" + p.id, p.id + ".mp4");
     if (!fs.existsSync(src)) die("part " + p.id + " is missing from the download");
     const v = videoInfo(src);
-    if (v.frames !== p.frames) die(p.id + ".mp4 has " + v.frames + " frames, the plan needs " + p.frames);
+    if (p.frames != null && v.frames !== p.frames) die(p.id + ".mp4 has " + v.frames + " frames, the plan needs " + p.frames);
     fs.copyFileSync(src, path.join(partsDir, p.id + ".mp4"));
   }
   fs.rmSync(dl, { recursive: true, force: true });
@@ -81,7 +85,7 @@ function collect(runId) {
   // timings, from GitHub's own clock
   const secs = (a, b) => (new Date(b) - new Date(a)) / 1000;
   const jobs = info.jobs.filter((j) => j.startedAt && j.completedAt).map((j) => ({ name: j.name, seconds: secs(j.startedAt, j.completedAt) }));
-  const timing = { run: runId, url: info.url, parts: ran.parts.length, wallSeconds: secs(info.createdAt, info.updatedAt),
+  const timing = { engine: full.engine, version: full.version, run: runId, url: info.url, parts: ran.parts.length, wallSeconds: secs(info.createdAt, info.updatedAt),
     jobMinutesBilledIfPrivate: jobs.reduce((s, j) => s + Math.ceil(j.seconds / 60), 0), downloadSeconds: downloadSecs, jobs };
   console.log("\nrun " + runId + ": " + timing.wallSeconds.toFixed(0) + " s from start to finish on GitHub, download " + downloadSecs.toFixed(0) + " s");
   for (const j of jobs) console.log("  " + j.name.padEnd(14) + j.seconds.toFixed(0).padStart(5) + " s");
@@ -103,7 +107,7 @@ function join() {
     const f = path.join(partsDir, p.id + ".mp4"), v = videoInfo(f);
     const sig = [v.codec, v.profile, v.width, v.height, v.pix_fmt, v.fps].join(" ");
     if (!ref) ref = sig; else if (sig !== ref) die(p.id + ".mp4 was encoded differently (" + sig + ") from the first part (" + ref + ")");
-    if (v.frames !== p.frames) die(p.id + ".mp4 has " + v.frames + " frames but the project now needs " + p.frames + ": re-render it (--only " + p.project + ")");
+    if (p.frames != null && v.frames !== p.frames) die(p.id + ".mp4 has " + v.frames + " frames but the project now needs " + p.frames + ": re-render it (--only " + p.project + ")");
     total += v.frames; files.push(f);
   }
   const want = total / full.fps;

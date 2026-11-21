@@ -1,7 +1,8 @@
-name: Render
+name: Render (HyperFrames)
 run-name: Render ${{ inputs.production }} ${{ inputs.only }}
 
 # Started by hand only (node tools/cloud.mjs render <production>, or the "Run workflow" button).
+# For HyperFrames productions (pipeline.json without "engine", or "engine": "hyperframes").
 # A push never starts a render.
 on:
   workflow_dispatch:
@@ -45,7 +46,7 @@ jobs:
         id: plan
         env:
           ONLY: ${{ inputs.only }}
-        run: node tools/plan.mjs "$PRODUCTION" --github --only "$ONLY"
+        run: node tools/plan.mjs "$PRODUCTION" --github --engine hyperframes --only "$ONLY"
       - uses: actions/upload-artifact@v7
         with:
           name: plan

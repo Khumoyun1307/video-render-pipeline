@@ -34,6 +34,24 @@
 !/productions/*/*/assets/img/**
 !/productions/*/*/assets/fonts/*.woff2
 !/productions/*/*/assets/fonts/OFL-*.txt
+# Remotion: the production folder is one Remotion project (installed from its lockfile on the runner)
+!/productions/*/package.json
+!/productions/*/package-lock.json
+!/productions/*/tsconfig.json
+!/productions/*/remotion.config.ts
+!/productions/*/src/**/*.ts
+!/productions/*/src/**/*.tsx
+!/productions/*/src/**/*.js
+!/productions/*/src/**/*.jsx
+!/productions/*/src/**/*.css
+!/productions/*/src/**/*.json
+!/productions/*/public/img/**
+!/productions/*/public/fonts/*.woff2
+!/productions/*/public/fonts/OFL-*.txt
+# Manim: scene files and their images at the top of the production folder
+!/productions/*/*.py
+!/productions/*/manim.cfg
+!/productions/*/assets/img/**
 
 # ---- 4. never, even where a rule above would allow it ----
 # narration and every other sound or video file
@@ -63,6 +81,15 @@ script*.md
 storyboard*
 transcript*
 # generated or local-only
+# (Remotion: node_modules with its browser, bundles, renders; Manim: media/ renders and TeX caches; Python caches)
+build/
+dist/
+out/
+.remotion/
+media/
+__pycache__/
+*.pyc
+.venv/
 .hyperframes/
 grabs/
 node_modules/

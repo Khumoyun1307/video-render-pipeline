@@ -1,0 +1,8 @@
+{
+  "engine": "manim",
+  "fps": 30,
+  "format": "vertical",
+  "file": "scenes.py",
+  "framecode": true,
+  "projects": ["ShortCard", "ShortEnd"]
+}

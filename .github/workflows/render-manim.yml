@@ -1,0 +1,116 @@
+name: Render (Manim)
+run-name: Render ${{ inputs.production }} ${{ inputs.only }}
+
+# Started by hand only (node tools/cloud.mjs render <production>, or the "Run workflow" button).
+# For productions whose pipeline.json says "engine": "manim". A push never starts a render.
+#
+# Manim runs in the project's official container image, which already holds Manim, its system libraries,
+# ffmpeg and a TeX installation. Measured on standard runners: pulling it takes about 12 s, while
+# pip + apt takes about 43 s before any TeX, and a minimal TeX from apt another 28 s.
+on:
+  workflow_dispatch:
+    inputs:
+      production:
+        description: Folder under productions/
+        required: true
+        default: manim-test
+      only:
+        description: Optional. Render only these scenes (space separated, for example "Intro Graph")
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  MANIM_VERSION: "0.22.1"          # pinned. Keep equal to ENGINES.manim in tools/lib.mjs.
+  IMAGE: manimcommunity/manim:v0.22.1
+  PRODUCTION: ${{ inputs.production }}
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Guard (nothing forbidden is in the repository)
+        run: node tools/guard.mjs --tracked
+      - name: List the render jobs
+        id: plan
+        env:
+          ONLY: ${{ inputs.only }}
+        run: node tools/plan.mjs "$PRODUCTION" --github --engine manim --only "$ONLY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: plan
+          path: plan.json
+          retention-days: 1
+
+  render:
+    name: ${{ matrix.id }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pull Manim ${{ env.MANIM_VERSION }}
+        run: |
+          set -euo pipefail
+          t0=$(date +%s)
+          for i in 1 2 3; do docker pull -q "$IMAGE" && break; echo "pull failed, retrying"; sleep 15; done
+          docker run --rm "$IMAGE" manim --version
+          echo "pull_seconds=$(( $(date +%s) - t0 ))"
+          nproc && free -g | sed -n 2p
+      - name: Render
+        env:
+          ID: ${{ matrix.id }}
+          SCENE: ${{ matrix.project }}
+          FILE: ${{ matrix.file }}
+        run: |
+          set -euo pipefail
+          plan="$(node tools/plan.mjs "$PRODUCTION" 2>/dev/null)"
+          get() { node -p "JSON.parse(process.argv[1]).$1" "$plan"; }
+          fps="$(get fps)"; width="$(get width)"; height="$(get height)"
+          media="$RUNNER_TEMP/media"; mkdir -p "$media" out
+          # Size and frame rate come from a config file, not only from -r: with -r alone Manim keeps the
+          # landscape frame width in scene units and a vertical render comes out squashed. From the config
+          # file it derives the width from the aspect ratio (8 units tall, 4.5 wide for 1080x1920).
+          cfg="$RUNNER_TEMP/pipeline.cfg"
+          printf '[CLI]\npixel_width = %s\npixel_height = %s\nframe_rate = %s\n' "$width" "$height" "$fps" > "$cfg"
+          # The production folder is mounted read-only; output goes to a separate folder.
+          run() { docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -e PYTHONDONTWRITEBYTECODE=1 \
+                    -v "$GITHUB_WORKSPACE/productions/$PRODUCTION:/manim:ro" -v "$media:/media" -v "$GITHUB_WORKSPACE/out:/out" \
+                    -v "$cfg:/pipeline.cfg:ro" -w /manim "$IMAGE" "$@"; }
+          args=(manim render --config_file /pipeline.cfg --disable_caching --progress_bar none -r "$width,$height" --fps "$fps" --media_dir /media "$FILE" "$SCENE")
+          echo "${args[*]}"
+          t0=$(date +%s)
+          run "${args[@]}"
+          secs=$(( $(date +%s) - t0 ))
+          src="$(find "$media/videos" -name "$SCENE.mp4" -not -path "*partial_movie_files*" | head -n 1)"
+          [ -n "$src" ] || { echo "::error::no $SCENE.mp4 was written"; exit 1; }
+          cp "$src" "out/$ID.mp4"
+          # PyAV comes with Manim, so the container can read the result back; the runner needs no ffmpeg.
+          info="$(run python -c 'import av,sys; c=av.open(sys.argv[1]); s=c.streams.video[0]; n=sum(1 for _ in c.demux(s) if _.size); print(n, s.codec_context.width, s.codec_context.height, s.average_rate, s.codec_context.name, s.codec_context.profile, s.codec_context.pix_fmt)' "/out/$ID.mp4")"
+          read -r got w h rate codec profile pixfmt <<< "$info"
+          echo "$info"
+          per=$(node -p "($secs / ($got / $fps)).toFixed(2)")
+          echo "| $ID | $got frames | render ${secs} s (container start included) | ${per} s per finished second |" >> "$GITHUB_STEP_SUMMARY"
+          echo "render_seconds=$secs frames=$got per_finished_second=$per"
+          if [ "${w}x${h}" != "${width}x${height}" ]; then echo "::error::$ID is ${w}x${h}, the production's format needs ${width}x${height}"; exit 1; fi
+          if [ "$rate" != "$fps" ]; then echo "::error::$ID runs at $rate fps, the production needs $fps"; exit 1; fi
+      - uses: actions/upload-artifact@v7
+        with:
+          name: part-${{ matrix.id }}
+          path: out/${{ matrix.id }}.mp4
+          retention-days: 1          # the local script downloads the files and then deletes them from GitHub
+          compression-level: 0
+          if-no-files-found: error

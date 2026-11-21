@@ -5,8 +5,16 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-export const HF_VERSION = "0.9.72";                       // pinned. Change it here and in .github/workflows/render.yml together.
-export const DEFAULTS = { fps: 30, quality: "high", workers: 4, sliceSeconds: 45, check: true };
+// The three render engines. Each version is pinned: change it here and in the engine's workflow file together
+// (for Remotion also in the production's package.json and package-lock.json).
+export const ENGINES = {
+  hyperframes: { version: "0.9.72", workflow: "render.yml" },
+  remotion: { version: "4.0.540", workflow: "render-remotion.yml" },
+  manim: { version: "0.22.1", workflow: "render-manim.yml" },
+};
+export const HF_VERSION = ENGINES.hyperframes.version;
+export const FORMATS = { landscape: [1920, 1080], vertical: [1080, 1920] };
+export const DEFAULTS = { engine: "hyperframes", format: "landscape", fps: 30, quality: "high", workers: 4, sliceSeconds: 45, check: true };
 
 export function die(msg, code = 1) { console.error("\nERROR: " + msg + "\n"); process.exit(code); }
 export function readJson(file) { return JSON.parse(fs.readFileSync(file, "utf8")); }
@@ -43,17 +51,29 @@ export function productionDir(name) {
 export function loadProduction(name) {
   const dir = productionDir(name);
   const cfg = { ...DEFAULTS, vendor: [], ...readJson(path.join(dir, "pipeline.json")) };
-  if (!Array.isArray(cfg.projects) || !cfg.projects.length) die("productions/" + name + "/pipeline.json needs a \"projects\" list");
+  const where = "productions/" + name + "/pipeline.json";
+  if (!ENGINES[cfg.engine]) die(where + ": engine must be one of " + Object.keys(ENGINES).join(", ") + ", not \"" + cfg.engine + "\"");
+  if (!FORMATS[cfg.format]) die(where + ": format must be one of " + Object.keys(FORMATS).join(", "));
+  if (!Array.isArray(cfg.projects) || !cfg.projects.length) die(where + " needs a \"projects\" list");
   return { name, dir, cfg };
 }
 
-// The list of render jobs for a production: one per project, or several when a project is longer than
-// sliceSeconds (each slice is rendered with --start/--end on a whole second, so the pieces join frame-exactly).
-export function plan(name) {
-  const { dir, cfg } = loadProduction(name);
+// How many slices a project of `dur` seconds is cut into: one, unless it is longer than one and a half times
+// sliceSeconds; never a last slice shorter than 5 s.
+function sliceCount(dur, S) {
+  let n = S > 0 && dur > S * 1.5 ? Math.ceil(dur / S) : 1;
+  if (n > 1 && dur - (n - 1) * S < 5) n--;
+  return n;
+}
+const sliceId = (project, n, k) => (n === 1 ? project : project + "-p" + String(k + 1).padStart(2, "0"));
+
+// HyperFrames: one project folder (index.html) per chapter. Slices are rendered with --start/--end on a whole
+// second, so the pieces join frame-exactly.
+function planHyperframes(name, dir, cfg) {
   const parts = [];
   let totalFrames = 0;
   for (const project of cfg.projects) {
+    if (typeof project !== "string") die("hyperframes projects are folder names, for example \"ch01\"");
     const html = path.join(dir, project, "index.html");
     if (!fs.existsSync(html)) die("productions/" + name + "/" + project + "/index.html is missing");
     const src = fs.readFileSync(html, "utf8");
@@ -65,14 +85,11 @@ export function plan(name) {
       const m = /window\.CH\s*=\s*(\{[\s\S]*?\});/.exec(fs.readFileSync(cuesFile, "utf8"));
       if (m) { const ch = JSON.parse(m[1]); if (Number.isInteger(ch.frames)) frames = ch.frames; }
     }
-    const S = cfg.sliceSeconds;
-    let n = S > 0 && dur > S * 1.5 ? Math.ceil(dur / S) : 1;
-    if (n > 1 && dur - (n - 1) * S < 5) n--;                 // do not leave a tail shorter than 5 s
+    const S = cfg.sliceSeconds, n = sliceCount(dur, S);
     for (let k = 0; k < n; k++) {
       const start = k * S, last = k === n - 1;
       parts.push({
-        id: n === 1 ? project : project + "-p" + String(k + 1).padStart(2, "0"),
-        project, order: parts.length,
+        id: sliceId(project, n, k), project, order: parts.length,
         start: n === 1 ? "" : String(start), end: last ? "" : String(start + S),
         frames: last ? frames - start * cfg.fps : S * cfg.fps,
         check: cfg.check && k === 0,
@@ -80,8 +97,70 @@ export function plan(name) {
     }
     totalFrames += frames;
   }
-  if (parts.length > 256) die("more than 256 jobs: raise sliceSeconds");
-  return { production: name, hyperframes: HF_VERSION, fps: cfg.fps, quality: cfg.quality, workers: cfg.workers, totalFrames, parts };
+  return { parts, totalFrames };
+}
+
+// Remotion: the production folder is one Remotion project and each entry of "projects" is a composition,
+// { "id": "Intro", "frames": 300 }. A long composition is cut into frame ranges (--frames=a-b); the last range is
+// open-ended (--frames=a-), so a composition longer or shorter than stated shows up as a wrong frame count.
+function planRemotion(name, dir, cfg) {
+  const where = "productions/" + name + "/";
+  const entry = cfg.entry || "src/index.ts";
+  if (!fs.existsSync(path.join(dir, entry))) die(where + entry + " (the Remotion entry point) is missing");
+  if (!fs.existsSync(path.join(dir, "package-lock.json"))) die(where + "package-lock.json is missing: run npm install there once and commit the lockfile");
+  const deps = { ...(readJson(path.join(dir, "package.json")).dependencies || {}) };
+  if (!deps.remotion || !deps["@remotion/cli"]) die(where + "package.json needs remotion and @remotion/cli");
+  for (const [pkg, v] of Object.entries(deps)) {
+    if (!/^\d+\.\d+\.\d+$/.test(v)) die(where + "package.json: " + pkg + " must be pinned to an exact version, not \"" + v + "\"");
+    if (pkg.startsWith("@remotion/") && v !== deps.remotion) die(where + "package.json: " + pkg + " " + v + " differs from remotion " + deps.remotion);
+  }
+  if (deps.remotion !== ENGINES.remotion.version) console.error("note: " + name + " uses remotion " + deps.remotion + "; the pipeline was tested with " + ENGINES.remotion.version);
+  const parts = [];
+  let totalFrames = 0;
+  for (const p of cfg.projects) {
+    if (!p || !/^[A-Za-z0-9-]+$/.test(p.id || "") || !Number.isInteger(p.frames) || p.frames < 1)
+      die("remotion projects are { \"id\": \"<composition id>\", \"frames\": <whole number> }, not " + JSON.stringify(p));
+    const S = cfg.sliceSeconds, n = sliceCount(p.frames / cfg.fps, S), F = S * cfg.fps;
+    for (let k = 0; k < n; k++) {
+      const a = k * F, last = k === n - 1;
+      parts.push({ id: sliceId(p.id, n, k), project: p.id, order: parts.length,
+        range: n === 1 ? "" : last ? a + "-" : a + "-" + (a + F - 1), frames: last ? p.frames - a : F });
+    }
+    totalFrames += p.frames;
+  }
+  return { parts, totalFrames, remotion: deps.remotion, entry };
+}
+
+// Manim: one job per scene class. Entries of "projects" are class names in "file" (default scenes.py), or
+// { "scene": "Graph", "file": "other.py" }. A scene's length is known only once it is rendered, so frames is null.
+function planManim(name, dir, cfg) {
+  const parts = [];
+  for (const p of cfg.projects) {
+    const scene = typeof p === "string" ? p : p && p.scene;
+    const file = (p && typeof p === "object" && p.file) || cfg.file || "scenes.py";
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(scene || "")) die("manim projects are scene class names, not " + JSON.stringify(p));
+    if (!/^[A-Za-z0-9_][A-Za-z0-9_./-]*\.py$/.test(file) || file.includes("..")) die("not a Python file inside the production: " + file);
+    const f = path.join(dir, file);
+    if (!fs.existsSync(f)) die("productions/" + name + "/" + file + " is missing");
+    if (!new RegExp("^class\\s+" + scene + "\\s*\\(", "m").test(fs.readFileSync(f, "utf8"))) die("there is no class " + scene + " in productions/" + name + "/" + file);
+    if (parts.some((x) => x.id === scene)) die("scene " + scene + " is listed twice");
+    parts.push({ id: scene, project: scene, order: parts.length, file, frames: null });
+  }
+  return { parts, totalFrames: null };
+}
+
+// The render jobs of a production (the GitHub matrix) and the settings every job needs.
+export function plan(name) {
+  const { dir, cfg } = loadProduction(name);
+  const r = { hyperframes: planHyperframes, remotion: planRemotion, manim: planManim }[cfg.engine](name, dir, cfg);
+  if (r.parts.length > 256) die("more than 256 jobs: raise sliceSeconds");
+  const [width, height] = FORMATS[cfg.format];
+  const out = { production: name, engine: cfg.engine, version: ENGINES[cfg.engine].version, workflow: ENGINES[cfg.engine].workflow,
+    fps: cfg.fps, format: cfg.format, width, height, quality: cfg.quality, workers: cfg.workers,
+    totalFrames: r.totalFrames, framecode: !!cfg.framecode, parts: r.parts };
+  if (cfg.engine === "hyperframes") out.hyperframes = HF_VERSION;
+  if (cfg.engine === "remotion") { out.remotion = r.remotion; out.entry = r.entry; }
+  return out;
 }
 
 // ---- ffprobe ----

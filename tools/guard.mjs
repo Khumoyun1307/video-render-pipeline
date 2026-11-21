@@ -7,6 +7,8 @@
 //   - Microsoft fonts (Georgia, Ink Free, anything whose name table says Microsoft or Monotype)
 //   - text that contains an email address or a Windows user folder path
 //   - production paperwork (manifests, reports, scripts, transcripts, upload metadata)
+//   - build output and installed packages of any engine: node_modules, Remotion bundles and its browser,
+//     Manim media/ (renders, TeX caches), Python caches
 // --staged: files in the git index (default). --tracked: every tracked file. <folder>: every file in it.
 import fs from "node:fs";
 import path from "node:path";
@@ -18,7 +20,9 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MAX_BYTES = 50 * 1024 * 1024;
 const MEDIA = /\.(wav|mp3|m4a|aac|flac|ogg|mp4|mov|mkv|webm|avi)$/i;
 const FONT = /\.(ttf|otf|ttc|woff|woff2)$/i;
-const TEXT = /\.(html?|css|js|mjs|json|md|txt|svg|ya?ml|sh|ps1|py)$/i;
+const TEXT = /\.(html?|css|js|mjs|cjs|jsx|ts|tsx|mts|cts|json|md|txt|svg|ya?ml|sh|ps1|py|cfg|toml)$/i;
+// generated folders of the three engines (and Python byte code): never committed, whatever is inside
+const BUILD = /(^|\/)(node_modules|\.remotion|build|dist|out|media|__pycache__|\.venv|\.hyperframes)\/|\.py[co]$/i;
 const PAPERWORK = /(^|\/)(manifest[^/]*|[^/]*report[^/]*|[^/]*metadata[^/]*|cues\.json|script[^/]*\.md|storyboard[^/]*|transcript[^/]*)$/i;
 // file names of fonts that ship with Windows or Office and may not be redistributed
 const MS_FONT_NAME = /(^|\/)(georgia|inkfree|arial|ariblk|times|calibri|cambria|candara|consola|constan|corbel|comic|segoe|seguisb|tahoma|verdana|trebuc|impact|gabriola|bahnschrift|palatino|pala|bookman|garamond|century|sitka)[^/]*\.(ttf|otf|ttc|woff2?)$/i;
@@ -76,6 +80,7 @@ for (const file of files) {
   const rel = path.relative(REPO, file).replace(/\\/g, "/");
   const bad = (why) => problems.push(rel + "\n      " + why);
   const size = fs.statSync(file).size;
+  if (BUILD.test(rel)) { bad("build output or installed packages (node_modules, bundles, Manim media/, Python caches): generated on the runner"); continue; }
   if (MEDIA.test(rel)) { bad("sound or video file: narration and renders stay on the Owner's computer"); continue; }
   if (size > MAX_BYTES) { bad("larger than 50 MB (" + (size / 1048576).toFixed(0) + " MB)"); continue; }
   if (PAPERWORK.test(rel) && !rel.startsWith("tools/")) bad("production paperwork (manifest, report, script, transcript or upload text)");

@@ -1,0 +1,8 @@
+{
+  "engine": "manim",
+  "fps": 30,
+  "format": "landscape",
+  "file": "scenes.py",
+  "framecode": true,
+  "projects": ["Intro", "Graph", "Formula"]
+}

@@ -1,0 +1,12 @@
+{
+  "engine": "remotion",
+  "fps": 30,
+  "format": "landscape",
+  "workers": 4,
+  "sliceSeconds": 10,
+  "entry": "src/index.ts",
+  "projects": [
+    { "id": "Title", "frames": 180 },
+    { "id": "Bars", "frames": 780 }
+  ]
+}
