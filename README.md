@@ -113,7 +113,7 @@ productions/<name>/
 
 - One job per scene class, all at the same time; the scenes are joined in the listed order. A scene is not cut into slices, so split a very long scene into several.
 - The picture is always `format` and `fps` from `pipeline.json`: 1920x1080 or 1080x1920 at 30 fps. In the vertical format the frame is 8 units tall and 4.5 wide, so scenes have to be laid out for it.
-- Manim runs in its official container image `manimcommunity/manim:v0.22.1`, which already contains LaTeX (`MathTex`, `Tex`). TEX_TBD
+- Manim runs in its official container image `manimcommunity/manim:v0.22.1`, which already contains LaTeX (`MathTex`, `Tex`), its system libraries and ffmpeg. Chosen by measured set-up time: the image pulls in about 12 s, while `pip install manim` needs apt packages plus a source build (about 43 s) before any TeX, and a minimal TeX from apt costs another 28 s per job (TinyTeX about 14 s). Because TeX comes inside the image, it costs nothing extra, so there is no per-production TeX switch: a text-only production pays nothing for it. The image comes from Docker Hub; a failed pull is retried twice.
 - `--disable_caching` is used: every job renders from scratch.
 
 ## What must never be committed
@@ -156,4 +156,19 @@ The Remotion and Manim tests draw the frame number as 16 squares in the top-left
 
 ## Measured (21 November 2026, standard runners of a public repository: 4 CPU, 16 GB)
 
-MEASURED_TBD
+Start to finish is GitHub's own clock from the request to the last job; download, join and sound are on the laptop.
+
+| Run | Jobs | Start to finish on GitHub | Set-up per job | Render, seconds per finished second | Download | Join and sound |
+|---|---|---|---|---|---|---|
+| HyperFrames `pipeline-test`, 34 s | 4 at once | 83 to 90 s | 35 to 50 s | 1.3 to 2.7 | 10 to 20 s | 5 to 9 s |
+| HyperFrames, re-render of one chapter (`--only ch01`) | 1 | 84 s | | | 4 s | 5 s |
+| HyperFrames `pipeline-test` again after adding the other engines | 4 at once | 101 s | 28 to 54 s (the npm install of HyperFrames varied from 24 to 45 s) | 1.6 to 2.7 | 6 s | 2 s |
+| Remotion `remotion-test`, 32 s, first run (empty cache) | 4 at once | 55 s | 8 to 10 s install from the lockfile | 1.7 to 2.3 | 7 s | 4 s |
+| Remotion `remotion-test`, cache filled | 4 at once | 50 s | 5 to 7 s (cache restore and browser check) | 1.1 to 1.3 | 7 s | 3 s |
+| Manim `manim-test`, 32 s | 3 at once | 46 s (49 s on the first run) | 18 to 21 s (image pull and one container start) | 0.35 to 0.67 | 5 s | 2 s |
+| Manim `manim-short-test`, 8 s vertical | 2 at once | 46 to 47 s | 18 to 24 s | 1.0 to 1.3 | 3 s | 1 s |
+
+- Every final clip was checked with `tools/verify.mjs`: H.264 High, yuv420p, the format's size, 30 fps, the expected frame count and length, no decode errors; in the Remotion and Manim tests the frame codes count without a gap or repeat across every join (for example 299 -> 300 and 599 -> 600 between Remotion slices). The Remotion and Manim tests were checked silent and with a placeholder tone added locally, the HyperFrames test with a stand-in narration (AAC 48 kHz stereo, picture minus sound 0 ms); the vertical Short silent only.
+- Render seconds include Remotion's bundling and Manim's container start, so short test parts look slower per second than long real ones would.
+- Each job also spends a few seconds on checkout and upload. Most of a short test run is fixed overhead: the plan job alone takes 5 to 16 s before the render jobs start.
+- Not measured yet: a real 10-minute production with any engine. For HyperFrames with 45 s slices it should come to roughly 4 to 6 minutes including download and join, against about 40 minutes of full CPU load on the laptop.
