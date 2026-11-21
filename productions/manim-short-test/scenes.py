@@ -28,7 +28,7 @@ class ShortCard(Scene):
         add_frame_code(self)
         # In the vertical format the frame is 4.5 units wide and 8 units tall.
         box = RoundedRectangle(width=3.8, height=5.5, corner_radius=0.3, color=TEAL)
-        title = Text("Placeholder", font_size=60).move_to(box.get_top() + DOWN * 1)
+        title = Text("Placeholder", font_size=40).move_to(box.get_top() + DOWN * 1)
         circle = Circle(radius=1, color=YELLOW).move_to(box.get_center() + DOWN * 0.5)
         self.play(Create(box), run_time=1)
         self.play(Write(title), GrowFromCenter(circle), run_time=1.5)
