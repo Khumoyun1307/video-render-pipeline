@@ -1,0 +1,24 @@
+/* Test kit. Fonts are local open-licence files (SIL OFL, licence texts in fonts/); no system font names anywhere. */
+@font-face{font-family:"Serif";font-weight:400;font-style:normal;src:url("fonts/gelasio-400.woff2") format("woff2");font-display:block}
+@font-face{font-family:"Serif";font-weight:700;font-style:normal;src:url("fonts/gelasio-700.woff2") format("woff2");font-display:block}
+@font-face{font-family:"Serif";font-weight:400;font-style:italic;src:url("fonts/gelasio-400-italic.woff2") format("woff2");font-display:block}
+@font-face{font-family:"Hand";font-weight:300;font-style:normal;src:url("fonts/kalam-300.woff2") format("woff2");font-display:block}
+@font-face{font-family:"Label";font-weight:600;font-style:normal;src:url("fonts/inter-600.woff2") format("woff2");font-display:block}
+
+:root{--ground:#1a1715;--glow:#2b2521;--paper:#efe6d2;--ink:#1c2540;--cream:#f1e9d6;--cream2:#cdbfa3;--amber:#e3a857}
+html,body{margin:0;padding:0;background:var(--ground)}
+#root{position:relative;width:1920px;height:1080px;overflow:hidden;background:radial-gradient(1200px 700px at 50% 42%,var(--glow),var(--ground));color:var(--cream);font-family:"Serif",serif}
+.abs{position:absolute}
+.title{font-weight:700;font-size:112px;line-height:1.08;letter-spacing:-.5px}
+.title em{font-style:normal;color:var(--amber)}
+.sub{font-style:italic;font-size:44px;color:var(--cream2)}
+.label{font-family:"Label",sans-serif;font-weight:600;font-size:30px;letter-spacing:4px;text-transform:uppercase;color:var(--cream2)}
+.mono{font-family:"Label",sans-serif;font-weight:600;font-size:34px;color:var(--cream);font-variant-numeric:tabular-nums}
+.sheet{background:linear-gradient(170deg,#f3ecd9,#e8dec6);border-radius:4px;box-shadow:0 26px 60px rgba(0,0,0,.5)}
+.hand{font-family:"Hand",sans-serif;font-weight:300;color:var(--ink);font-size:92px;line-height:1;white-space:nowrap}
+.track{height:6px;border-radius:3px;background:rgba(241,233,214,.22)}
+.fill{height:6px;border-radius:3px;background:var(--amber);transform-origin:0 50%}
+.big{font-weight:700;font-size:300px;line-height:1;font-variant-numeric:tabular-nums}
+.tick{width:2px;height:22px;background:rgba(241,233,214,.5)}
+.mark{width:4px;height:60px;background:var(--amber)}
+.dot{width:36px;height:36px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 8px rgba(227,168,87,.22)}

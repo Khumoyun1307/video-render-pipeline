@@ -1,0 +1,3 @@
+#!/bin/sh
+# Refuses a commit that contains anything this public repository must never hold.
+exec node tools/guard.mjs --staged

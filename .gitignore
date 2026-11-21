@@ -1,0 +1,72 @@
+# THIS REPOSITORY IS PUBLIC. Everything committed is visible to everyone, for good.
+# The rule is "nothing gets in unless it is on the list": every file is ignored first,
+# then only render inputs are let back in. tools/guard.mjs checks the same rules again
+# before each commit (see .githooks/pre-commit). Never use `git add -f`.
+
+# ---- 1. ignore everything at the top level ----
+/*
+!/.gitignore
+!/.gitattributes
+!/.githooks/
+!/.github/
+!/README.md
+!/tools/
+!/productions/
+
+# ---- 2. inside productions: ignore every file, keep the folders ----
+/productions/**
+!/productions/**/
+
+# ---- 3. let render inputs back in ----
+!/productions/*/pipeline.json
+# the shared kit of a production
+!/productions/*/kit/*.css
+!/productions/*/kit/*.js
+!/productions/*/kit/fonts/*.woff2
+!/productions/*/kit/fonts/OFL-*.txt
+!/productions/*/kit/img/**
+# one project per chapter or Short
+!/productions/*/*/index.html
+!/productions/*/*/hyperframes.json
+!/productions/*/*/scene.js
+!/productions/*/*/scene.css
+!/productions/*/*/cues.js
+!/productions/*/*/assets/img/**
+!/productions/*/*/assets/fonts/*.woff2
+!/productions/*/*/assets/fonts/OFL-*.txt
+
+# ---- 4. never, even where a rule above would allow it ----
+# narration and every other sound or video file
+*.wav
+*.mp3
+*.m4a
+*.aac
+*.flac
+*.ogg
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.avi
+# Microsoft fonts (Georgia, Ink Free and the rest of C:\Windows\Fonts) and any font that is not .woff2
+*.ttf
+*.otf
+*.ttc
+[Gg]eorgia*
+[Ii]nk[Ff]ree*
+# production paperwork: holds account details and unpublished text
+MANIFEST*
+*report*
+*metadata*
+cues.json
+script*.md
+storyboard*
+transcript*
+# generated or local-only
+.hyperframes/
+grabs/
+node_modules/
+/productions/*/*/assets/kit/
+gsap*.js
+.env*
+*.log
