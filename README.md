@@ -75,3 +75,15 @@ Needed on the laptop: Node 22 or later, git, the GitHub CLI signed in, ffmpeg.
 ## Test production
 
 `productions/pipeline-test` is two chapters of placeholder content (8 s and 26 s, the second rendered as three slices) that proves the whole path.
+
+## Measured (21 November 2026, standard runners of a public repository: 4 CPU, 16 GB)
+
+| Run | Jobs | Start to finish on GitHub | Download | Join and sound |
+|---|---|---|---|---|
+| Full test, 34 s of picture | 4 at once | 90 s, then 83 s on a second run | 10 to 20 s | 5 to 9 s |
+| Re-render of one chapter (`--only ch01`) | 1 | 84 s | 4 s | 5 s |
+
+- The final clip: 1,020 frames, 34.000 s, H.264 High 1920x1080 at 30 fps, AAC 48 kHz stereo, no decode errors; the frames on both sides of every join are consecutive.
+- Render speed on the runner: 1.3 to 1.6 s per finished second for chapter 1 and 2.2 to 2.7 s for chapter 2. Each job also spends 35 to 50 s on set-up (install, browser, check, upload) whatever its length.
+- The same 8 s chapter took about 58 s to render on the laptop (while it was also rendering another video) and 10 to 13 s on the runner.
+- Not measured yet: a real 10-minute production. With slices of 45 s it should come to roughly 4 to 6 minutes including download and join, against about 40 minutes of full CPU load on the laptop.
